@@ -1,0 +1,31 @@
+[Unit]
+Description=mini-jenkins frontend deployment console
+After=network.target
+
+[Service]
+Type=simple
+# 建议使用专门的服务账号，并确保它有权限读写仓库、发布目录和项目下的 data/。
+# nginx 还需要能读取发布目录。使用专门账号时，可以把发布目录设为同组可读。
+# User=deploy
+# Group=deploy
+# Environment=HOME=/home/deploy
+WorkingDirectory=/opt/mini-jenkins
+
+# Node 通过 nvm 安装时，systemd 不会自动加载 shell 的 PATH。
+# 把下面的路径替换为服务器上 `which node` / `which pnpm` 的结果。
+Environment=PATH=/home/deploy/.nvm/versions/node/v24.19.0/bin:/usr/local/bin:/usr/bin:/bin
+# 可选：环境变量覆盖文件
+EnvironmentFile=-/opt/mini-jenkins/.env
+
+ExecStart=/home/deploy/.nvm/versions/node/v24.19.0/bin/node /opt/mini-jenkins/src/server.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+KillMode=control-group
+
+# 基础加固；如果仓库或发布目录不在这个服务账号可写的范围内，请调整。
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

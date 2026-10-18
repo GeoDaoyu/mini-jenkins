@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>mini-jenkins · 前端部署控制台</title>
+    <meta name="description" content="前端 monorepo 的单机部署控制台" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="mini-jenkins 首页">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="3" y="4" width="26" height="7" rx="1.5" fill="currentColor" />
+            <rect x="6" y="12.5" width="20" height="7" rx="1.5" class="brand-mark-accent" />
+            <rect x="9" y="21" width="14" height="7" rx="1.5" fill="currentColor" />
+          </svg>
+          <span class="brand-copy">
+            <strong>MINI JENKINS</strong>
+            <small>前端部署控制台</small>
+          </span>
+        </a>
+
+        <div class="topbar-meta">
+          <div class="meta-item">
+            <span>分支</span>
+            <strong id="repo-branch" class="mono">—</strong>
+          </div>
+          <div class="meta-item meta-item-commit">
+            <span>提交</span>
+            <strong id="repo-commit" class="mono">—</strong>
+          </div>
+          <div class="meta-item meta-item-repo">
+            <span>仓库</span>
+            <strong id="repo-path" class="mono" title="">—</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="dispatch" aria-label="部署配置">
+          <section class="form-section">
+            <div class="section-heading">
+              <div class="section-heading-top">
+                <h1>新建部署</h1>
+                <button
+                  class="icon-button"
+                  type="button"
+                  id="refresh-button"
+                  aria-label="刷新应用和 Git 状态"
+                  title="刷新应用和 Git 状态"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path
+                      d="M13.2 6.4A5.4 5.4 0 1 0 13 10.6M13.4 2.8v3.8H9.6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <p>选择应用和构建环境，任务串行执行。</p>
+            </div>
+
+            <form id="deploy-form" novalidate>
+              <div class="field">
+                <div class="field-head">
+                  <label for="app-filter">应用</label>
+                  <span class="field-hint" id="app-count">—</span>
+                </div>
+                <div class="combo" id="app-combo">
+                  <div class="combo-control">
+                    <input
+                      id="app-filter"
+                      type="text"
+                      role="combobox"
+                      aria-expanded="false"
+                      aria-controls="app-options"
+                      aria-autocomplete="list"
+                      aria-describedby="app-hint"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="输入应用名过滤"
+                    />
+                    <button
+                      type="button"
+                      class="combo-clear"
+                      id="app-clear"
+                      aria-label="清空应用过滤"
+                      title="清空过滤"
+                      tabindex="-1"
+                      hidden
+                    >
+                      <svg viewBox="0 0 12 12" aria-hidden="true">
+                        <path d="m2.5 2.5 7 7m0-7-7 7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="combo-toggle"
+                      id="app-toggle"
+                      aria-label="展开应用列表"
+                      tabindex="-1"
+                    >
+                      <svg viewBox="0 0 12 8" aria-hidden="true">
+                        <path d="M1 1.5 6 6.5l5-5" fill="none" stroke="currentColor" stroke-width="1.5" />
+                      </svg>
+                    </button>
+                  </div>
+                  <ul class="combo-list" id="app-options" role="listbox" aria-label="应用列表" hidden></ul>
+                </div>
+                <p class="field-note" id="app-hint">从服务器 <code>apps/*</code> 目录读取应用名称。</p>
+              </div>
+
+              <div class="field">
+                <div class="field-head">
+                  <span class="field-label">构建环境</span>
+                  <span class="field-hint">读取 package.json 的 build 脚本</span>
+                </div>
+                <div class="variant-grid" id="variant-grid" role="radiogroup" aria-label="构建环境"></div>
+              </div>
+
+              <div class="field">
+                <div class="field-head">
+                  <label for="target-name">发布文件夹</label>
+                  <span class="field-hint">固定在发布根目录下</span>
+                </div>
+                <div class="target-shell" id="target-shell">
+                  <span class="target-base" id="target-base">—</span>
+                  <input
+                    id="target-name"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="默认使用 app 名称"
+                    aria-describedby="target-hint"
+                    maxlength="100"
+                  />
+                </div>
+                <p class="field-note" id="target-hint" aria-live="polite">默认使用 app 名称。</p>
+              </div>
+
+              <div class="options">
+                <label class="option-row">
+                  <input type="checkbox" id="pull-toggle" checked />
+                  <span class="option-copy">
+                    <span>拉取最新代码</span>
+                    <small>git pull --ff-only</small>
+                  </span>
+                </label>
+                <label class="option-row">
+                  <input type="checkbox" id="install-toggle" />
+                  <span class="option-copy">
+                    <span>重新安装依赖</span>
+                    <small id="install-hint">pnpm install --frozen-lockfile</small>
+                  </span>
+                </label>
+              </div>
+
+              <button class="deploy-button" type="submit" id="deploy-button">
+                <span id="deploy-button-text">开始部署</span>
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M4 10h11M11 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" />
+                </svg>
+              </button>
+              <p class="form-message" id="form-message" role="status"></p>
+            </form>
+          </section>
+
+       </aside>
+
+        <section class="run-panel" aria-labelledby="run-heading">
+          <div class="run-head">
+            <div class="run-identity">
+              <div class="run-title-row">
+                <h2 class="run-app" id="run-heading">准备就绪</h2>
+                <span class="variant-badge" id="run-variant" hidden>—</span>
+              </div>
+              <p class="run-sub" id="run-sub">在左侧选择一个应用，开始第一次部署。</p>
+            </div>
+            <div class="run-status" id="run-status" data-status="idle" aria-live="polite">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="run-status-text">待命</span>
+            </div>
+          </div>
+
+          <ol class="traverse" id="traverse" aria-label="部署阶段"></ol>
+
+          <dl class="run-meta">
+            <div>
+              <dt>发布目录</dt>
+              <dd><code id="run-target">—</code></dd>
+            </div>
+            <div>
+              <dt>提交</dt>
+              <dd><code id="run-commit">—</code></dd>
+            </div>
+            <div>
+              <dt>耗时</dt>
+              <dd id="run-duration">—</dd>
+            </div>
+          </dl>
+
+          <div class="error-banner" id="error-banner" role="alert" hidden>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path
+                d="M10 2.8 18 17H2L10 2.8ZM10 7.4v4.2M10 14.4v.2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <div class="error-copy">
+              <strong id="error-title">部署失败</strong>
+              <p id="error-message"></p>
+            </div>
+          </div>
+
+          <div class="console">
+            <div class="console-bar">
+              <div class="console-title">
+                <span class="console-led" aria-hidden="true"></span>
+                <span>执行日志</span>
+                <span class="console-stage" id="console-stage"></span>
+              </div>
+              <div class="console-actions">
+                <label class="follow-toggle">
+                  <input type="checkbox" id="follow-log" checked />
+                  <span>跟随</span>
+                </label>
+                <a class="console-button" id="download-log" href="#" download hidden>下载日志</a>
+                <button class="console-button console-button-danger" type="button" id="cancel-job" hidden>
+                  取消任务
+                </button>
+              </div>
+            </div>
+            <div class="log-output" id="log-output" tabindex="0" role="log" aria-label="执行日志">
+              <p class="log-empty">等待任务开始…</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+  </body>
+</html>

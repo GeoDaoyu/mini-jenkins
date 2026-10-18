@@ -1,0 +1,14 @@
+{
+  "host": "127.0.0.1",
+  "port": 3081,
+  "repoPath": "/home/deploy/chu",
+  "branch": "master",
+  "remote": "origin",
+  "appsDir": "apps",
+  "deployRoot": "/home/deploy/webs",
+  "pnpmBin": "pnpm",
+  "installArgs": ["install", "--frozen-lockfile"],
+  "requireClean": false,
+  "pullTimeoutMinutes": 10,
+  "buildTimeoutMinutes": 30
+}
