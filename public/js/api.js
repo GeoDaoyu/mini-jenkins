@@ -35,6 +35,9 @@ export const api = {
   meta() {
     return request('/api/meta');
   },
+  pull() {
+    return request('/api/pull', { method: 'POST' });
+  },
   job(id) {
     return request(`/api/jobs/${encodeURIComponent(id)}`);
   },

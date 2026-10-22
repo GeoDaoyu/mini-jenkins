@@ -3,7 +3,7 @@ import express from 'express';
 import { requireSameOrigin } from './security.js';
 import { discoverApps } from './discovery.js';
 import { UserError } from './errors.js';
-import { readRepoInfo } from './git.js';
+import { pullLatest, readRepoInfo } from './git.js';
 import { isFinished } from './job-status.js';
 
 const CSP = [
@@ -27,6 +27,10 @@ function apiNotFound(req, res) {
 }
 
 export function createApp({ config, jobs, logger = console }) {
+  // Guards against two browsers/tabs pulling at the same time. Concurrent
+  // `git pull` runs would fight over .git/index.lock and can leave the
+  // worktree in a half-merged state.
+  let pulling = false;
   const app = express();
   app.disable('x-powered-by');
 
@@ -53,27 +57,94 @@ export function createApp({ config, jobs, logger = console }) {
     res.json({ ok: true, uptime: Math.round(process.uptime()), activeJobId: jobs.activeJobId });
   });
 
+  async function buildMeta() {
+    let repo = null;
+    let repoError = null;
+    try {
+      repo = await readRepoInfo(config);
+    } catch (error) {
+      repoError = error.message;
+    }
+    return {
+      serverTime: new Date().toISOString(),
+      repo,
+      repoError,
+      apps: discoverApps(config),
+      activeJobId: jobs.activeJobId,
+      branch: config.branch || repo?.branch || null,
+      repoPath: config.repoPath,
+      deployRoot: config.deployRoot,
+      installCommand: [config.pnpmBin, ...config.installArgs].join(' '),
+    };
+  }
+
+  /**
+   * Pull the deployment branch so that apps added upstream show up in the
+   * console. Failures are reported as data instead of HTTP errors: the caller
+   * still needs the refreshed app list and Git state.
+   */
+  async function pullRepository() {
+    if (jobs.activeJobId) {
+      return {
+        status: 'skipped',
+        reason: 'active-job',
+        message: '有任务正在运行，已跳过拉取。',
+      };
+    }
+    if (pulling) {
+      return { status: 'skipped', reason: 'busy', message: '正在拉取代码，请稍候。' };
+    }
+
+    pulling = true;
+    try {
+      const result = await pullLatest(config, { timeoutMs: config.pullTimeoutMs });
+      const short = (hash) => hash.slice(0, 7);
+      if (result.before === result.after) {
+        return {
+          status: 'unchanged',
+          message: `代码已是最新（${short(result.after)}）。`,
+          branch: result.branch,
+          before: result.before,
+          after: result.after,
+          changedFiles: [],
+          dependencyChanged: false,
+        };
+      }
+      return {
+        status: 'updated',
+        message: `已拉取 ${short(result.before)} → ${short(result.after)}（${result.changedFiles.length} 个文件）。`,
+        branch: result.branch,
+        before: result.before,
+        after: result.after,
+        changedFiles: result.changedFiles.slice(0, 50),
+        dependencyChanged: result.dependencyChanged,
+      };
+    } catch (error) {
+      return {
+        status: 'failed',
+        message: error.message,
+        detail: typeof error.detail === 'string' ? error.detail : null,
+      };
+    } finally {
+      pulling = false;
+    }
+  }
+
   app.get('/api/meta', async (req, res, next) => {
     try {
-      let repo = null;
-      let repoError = null;
-      try {
-        repo = await readRepoInfo(config);
-      } catch (error) {
-        repoError = error.message;
+      res.json(await buildMeta());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/pull', async (req, res, next) => {
+    try {
+      const pull = await pullRepository();
+      if (pull.status === 'failed') {
+        logger.warn?.(`[pull] ${pull.message}`);
       }
-      const apps = discoverApps(config);
-      res.json({
-        serverTime: new Date().toISOString(),
-        repo,
-        repoError,
-        apps,
-        activeJobId: jobs.activeJobId,
-        branch: config.branch || repo?.branch || null,
-        repoPath: config.repoPath,
-        deployRoot: config.deployRoot,
-        installCommand: [config.pnpmBin, ...config.installArgs].join(' '),
-      });
+      res.json({ pull, ...(await buildMeta()) });
     } catch (error) {
       next(error);
     }

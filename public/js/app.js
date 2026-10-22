@@ -450,14 +450,13 @@ async function refreshCurrentJob() {
   }
 }
 
-async function refreshMeta() {
+function applyMeta(meta) {
   const previous = {
     app: state.app?.name,
     variant: state.variant?.name,
     target: state.targetName,
   };
   closeAppList({ resetInput: false });
-  const meta = await api.meta();
   state.meta = meta;
   state.apps = meta.apps;
   ui.setMeta(meta);
@@ -478,13 +477,32 @@ async function refreshMeta() {
   }
 }
 
+async function refreshMeta() {
+  applyMeta(await api.meta());
+}
+
 async function refreshAll({ silent = false } = {}) {
   if (state.refreshing) return;
   state.refreshing = true;
   ui.setRefreshBusy(true);
   try {
-    await Promise.all([refreshMeta(), refreshCurrentJob()]);
-    if (!silent) ui.setFormMessage('已刷新。', 'info');
+    // Pull first so apps added on the remote show up in the same refresh,
+    // then apply the app list/Git state returned with the pull result.
+    const result = await api.pull();
+    applyMeta(result);
+    await refreshCurrentJob();
+    if (silent) return;
+
+    const pull = result.pull ?? {};
+    if (pull.status === 'failed') {
+      ui.setFormMessage(`已刷新，但拉取失败：${pull.message}`, 'error');
+      ui.toast(`拉取失败：${pull.message}`);
+    } else if (pull.status === 'skipped') {
+      ui.setFormMessage(pull.message || '已跳过拉取。', 'info');
+    } else {
+      const hint = pull.dependencyChanged ? ' 依赖有变化，部署时请勾选「重新安装依赖」。' : '';
+      ui.setFormMessage(`${pull.message || '已刷新。'}${hint}`, 'info');
+    }
   } catch (error) {
     ui.toast(`刷新失败：${error.message}`);
   } finally {
